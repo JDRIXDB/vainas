@@ -1,0 +1,835 @@
+-- Crear la interfaz de usuario (UI)
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local TitleLabel = Instance.new("TextLabel")
+local ToggleButton = Instance.new("TextButton")
+local CombatButton = Instance.new("TextButton")
+local TeleportButton = Instance.new("TextButton")
+local HashirasButton = Instance.new("TextButton")
+local ExtraButton = Instance.new("TextButton")
+local DupeButton = Instance.new("TextButton")
+local SubMenuFrame = Instance.new("Frame")
+local DupeMenu = Instance.new("Frame")
+
+local godmodeEnabled = false
+local teleportListVisible = false
+local uiMinimized = false
+local autoBreathingEnabled = false
+local autoGourdEnabled = false
+local getDropEnabled = false
+local antiLagEnabled = false
+local noCrowEnabled = false
+
+-- Configuración de guardado
+local ConfigName = "DemonFall.json"
+local ConfigFolder = "Tekkit Hub"
+local Settings = {}
+
+-- Verificar si la función makefolder existe y si la carpeta existe
+if makefolder and not isfolder(ConfigFolder) then
+    makefolder(ConfigFolder)
+end
+
+-- Leer o crear archivo de configuración con verificación adicional
+local function loadSettings()
+    local success, result = pcall(function()
+        return readfile(ConfigFolder .. "//" .. ConfigName)
+    end)
+    
+    if success then
+        Settings = game:GetService("HttpService"):JSONDecode(result)
+    else
+        warn("No se pudo leer el archivo de configuración: " .. result)
+        Settings = {
+            godmodeEnabled = false,
+            autoBreathingEnabled = false,
+            autoGourdEnabled = false,
+            getDropEnabled = false,
+            antiLagEnabled = false,
+            noCrowEnabled = false,
+        }
+        writefile(ConfigFolder .. "//" .. ConfigName, game:GetService("HttpService"):JSONEncode(Settings))
+    end
+    
+    -- Cargar las configuraciones guardadas en variables
+    godmodeEnabled = Settings.godmodeEnabled or false
+    autoBreathingEnabled = Settings.autoBreathingEnabled or false
+    autoGourdEnabled = Settings.autoGourdEnabled or false
+    getDropEnabled = Settings.getDropEnabled or false
+    antiLagEnabled = Settings.antiLagEnabled or false
+    noCrowEnabled = Settings.noCrowEnabled or false
+end
+
+-- Función para guardar configuraciones con verificación adicional
+local function saveSettings()
+    Settings.godmodeEnabled = godmodeEnabled
+    Settings.autoBreathingEnabled = autoBreathingEnabled
+    Settings.autoGourdEnabled = autoGourdEnabled
+    Settings.getDropEnabled = getDropEnabled
+    Settings.antiLagEnabled = antiLagEnabled
+    Settings.noCrowEnabled = noCrowEnabled
+    
+    local success, errorMsg = pcall(function()
+        writefile(ConfigFolder .. "//" .. ConfigName, game:GetService("HttpService"):JSONEncode(Settings))
+    end)
+    
+    if not success then
+        warn("No se pudo guardar la configuración: " .. errorMsg)
+    end
+end
+
+-- Creación del TweenService
+local function Tween(A, B, C)
+    if A and B then
+        local Time = (B - A.Position).Magnitude / C
+        local Info = TweenInfo.new(Time, Enum.EasingStyle.Linear)
+        local Tween = game:GetService("TweenService"):Create(A, Info, {CFrame = CFrame.new(B.X, B.Y, B.Z)})
+        Tween:Play()
+        Tween.Completed:Wait()
+    end
+end
+
+-- Función para activar/desactivar Godmode
+local function toggleGodmode(state)
+    godmodeEnabled = state
+    saveSettings()
+    if godmodeEnabled then
+        game:GetService("ReplicatedStorage").Remotes.Async:FireServer("Character", "FallDamageServer", 0)
+    else
+        game:GetService("ReplicatedStorage").Remotes.Async:FireServer("Character", "FallDamageServer", math.acos(0))
+    end
+end
+
+-- Función para activar/desactivar Auto Breathing
+local function toggleAutoBreathing(state)
+    autoBreathingEnabled = state
+    saveSettings()
+    if autoBreathingEnabled then
+        spawn(function()
+            while autoBreathingEnabled and wait() do
+                pcall(function()
+                    if game:GetService("Players").LocalPlayer.Breathing.Value < 100 then
+                        game:GetService("VirtualInputManager"):SendKeyEvent(true, "G", true, game)
+                        wait(2)
+                        game:GetService("VirtualInputManager"):SendKeyEvent(true, "G", false, game)
+                        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 16
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+local trinketFarmEnabled = false
+
+local function toggleTrinketFarm(state)
+    trinketFarmEnabled = state
+    saveSettings()
+    if trinketFarmEnabled then
+        spawn(function()
+            while trinketFarmEnabled do
+                wait()
+                pcall(function()
+                    -- Obtener el trinket más cercano
+                    local nearestTrinket = getNearestTricket()
+                    if nearestTrinket then
+                        -- Moverse hacia el trinket
+                        Tween(game.Players.LocalPlayer.Character.HumanoidRootPart, nearestTrinket.Part.CFrame.p, Settings.Tween)
+                        -- Repetir hasta que esté lo suficientemente cerca
+                        repeat wait() until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - nearestTrinket.Part.Position).Magnitude < 4
+                        -- Interactuar con el trinket
+                        game:GetService("ReplicatedStorage").Remotes.Async:FireServer("Character", "Interaction", nearestTrinket.Part)
+                        wait(2)
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+local autoKillEnabled = false
+local selectedNPCType = nil
+
+local function toggleAutoKill(state)
+    autoKillEnabled = state
+    saveSettings()
+    if autoKillEnabled and selectedNPCType then
+        spawn(function()
+            while autoKillEnabled do
+                wait(1)
+                pcall(function()
+                    -- Seleccionar la función adecuada según el tipo de NPC seleccionado
+                    local target = nil
+                    if selectedNPCType == "Slayer" then
+                        target = getNearestSlayer()
+                    elseif selectedNPCType == "Demon" then
+                        target = getNearestDemon()
+                    -- Agregar más condiciones para otros NPCs si es necesario
+                    end
+                    
+                    if target then
+                        -- Equipar Katana automáticamente
+                        game:GetService("ReplicatedStorage").Remotes.Async:FireServer("Katana", "EquippedEvents", true, true)
+
+                        -- Moverse hacia el objetivo y atacar
+                        Tween(game.Players.LocalPlayer.Character.HumanoidRootPart, target.HumanoidRootPart.CFrame.p + Vector3.new(0, -3, 3), Settings.Tween)
+
+                        -- Ataque automático
+                        repeat
+                            wait()
+                            if target.Humanoid.Health < target.Humanoid.MaxHealth then
+                                game:GetService("ReplicatedStorage").Remotes.Sync:InvokeServer("Character", "Execute")
+                                game:GetService("ReplicatedStorage").Remotes.Async:FireServer("Katana", "Server")
+                                if target.Humanoid.Health <= 0 then
+                                    -- Recoger automáticamente el drop
+                                    local drop = getNearestDrop()
+                                    if drop then
+                                        Tween(game.Players.LocalPlayer.Character.HumanoidRootPart, drop.CFrame.p, Settings.Tween)
+                                        game:GetService("VirtualInputManager"):SendKeyEvent(true, "E", false, game)
+                                    end
+                                end
+                            end
+                        until target.Humanoid.Health <= 0
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+
+
+local antiSunEnabled = false
+
+local function toggleAntiSun(state)
+    antiSunEnabled = state
+    saveSettings()
+    if antiSunEnabled then
+        local OldNamecall
+        OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local args = {...}
+            if getnamecallmethod() == "FireServer" and args[2] == "DemonWeakness" and antiSunEnabled then
+                return wait(math.huge)
+            end
+            return OldNamecall(self, ...)
+        end)
+    end
+end
+
+-- Función para activar/desactivar Anti Lag
+local function toggleAntiLag(state)
+    antiLagEnabled = state
+    saveSettings()
+    if antiLagEnabled then
+        for _, v in pairs(game:GetService("Workspace"):GetDescendants()) do
+            if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
+                v.Material = Enum.Material.SmoothPlastic
+                if v:IsA("Texture") then
+                    v:Destroy()
+                end
+            end
+        end
+    end
+end
+
+-- Función para activar/desactivar No Crow
+local function toggleNoCrow(state)
+    noCrowEnabled = state
+    saveSettings()
+    if noCrowEnabled then
+        local crow = game.Players.LocalPlayer.Character:FindFirstChild("Crow")
+        if crow then
+            crow:Destroy()
+        end
+    end
+end
+
+-- Función para activar/desactivar Get Drop
+local function toggleGetDrop(state)
+    getDropEnabled = state
+    saveSettings()
+    if getDropEnabled then
+        spawn(function()
+            while getDropEnabled do
+                wait(0.1)
+                for _, item in pairs(workspace:GetChildren()) do
+                    if item:IsA("Tool") and item:FindFirstChild("Handle") then
+                        local player = game:GetService("Players").LocalPlayer
+                        local humanoidRootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                        if humanoidRootPart then
+                            humanoidRootPart.CFrame = item.Handle.CFrame
+                            game:GetService("VirtualInputManager"):SendKeyEvent(true, "E", false, game)
+                            wait(0.1)
+                            game:GetService("VirtualInputManager"):SendKeyEvent(false, "E", false, game)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- Función para activar/desactivar Auto Gourd
+local function toggleAutoGourd(state)
+    autoGourdEnabled = state
+    saveSettings()
+    if autoGourdEnabled then
+        game:GetService("Players").LocalPlayer.PlayerGui.Interface.HUD.Clay.Back.TextLabel:GetPropertyChangedSignal("Text"):Connect(function()
+            if autoGourdEnabled then
+                local Text = tonumber(game:GetService("Players").LocalPlayer.PlayerGui.Interface.HUD.Clay.Back.TextLabel.Text:match("%d+"))
+                if Text < 50 then
+                    mouse1press()
+                elseif Text > 70 then
+                    mouse1release()
+                end
+            end
+        end)
+    end
+end
+
+-- Función para abrir/cerrar submenús
+local function toggleSubMenu(subMenuFrame)
+    if uiMinimized then
+        subMenuFrame.Visible = false
+    else
+        subMenuFrame.Visible = not subMenuFrame.Visible
+    end
+end
+
+-- Configuración de ScreenGui
+ScreenGui.Name = "DariDemonFallHubGui"
+ScreenGui.Parent = game.CoreGui
+
+-- Configuración de MainFrame
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(23, 21, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Position = UDim2.new(0.3, 0, 0.3, 0)
+MainFrame.Size = UDim2.new(0, 400, 0, 200)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+-- Configuración del Título
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Parent = MainFrame
+TitleLabel.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+TitleLabel.Size = UDim2.new(1, 0, 0, 50)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "Dari Demon Fall Hub - by Dari-04"
+TitleLabel.TextColor3 = Color3.fromRGB(0, 170, 255)
+TitleLabel.TextSize = 20
+
+-- Configuración de SubMenuFrame
+SubMenuFrame.Name = "SubMenuFrame"
+SubMenuFrame.Parent = MainFrame
+SubMenuFrame.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+SubMenuFrame.Size = UDim2.new(0, 200, 0, 400)
+SubMenuFrame.Position = UDim2.new(1, 10, 0, 0)
+SubMenuFrame.Visible = false
+
+-- Botón de combate
+CombatButton.Name = "CombatButton"
+CombatButton.Parent = MainFrame
+CombatButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+CombatButton.Size = UDim2.new(0, 180, 0, 30)
+CombatButton.Position = UDim2.new(0, 10, 0, 60)
+CombatButton.Font = Enum.Font.GothamBold
+CombatButton.Text = "Combat"
+CombatButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+CombatButton.TextSize = 16
+
+CombatButton.MouseButton1Click:Connect(function()
+    toggleSubMenu(SubMenuFrame)
+    if SubMenuFrame.Visible then
+        SubMenuFrame:ClearAllChildren()
+
+        -- Opciones de combate
+        local GodmodeToggle = Instance.new("TextButton")
+        GodmodeToggle.Name = "GodmodeToggle"
+        GodmodeToggle.Parent = SubMenuFrame
+        GodmodeToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        GodmodeToggle.Size = UDim2.new(1, -20, 0, 30)
+        GodmodeToggle.Font = Enum.Font.GothamBold
+        GodmodeToggle.Text = godmodeEnabled and "Toggle Godmode: ON" or "Toggle Godmode: OFF"
+        GodmodeToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        GodmodeToggle.TextSize = 16
+        GodmodeToggle.Position = UDim2.new(0, 10, 0, 10)
+        
+        GodmodeToggle.MouseButton1Click:Connect(function()
+            toggleGodmode(not godmodeEnabled)
+            GodmodeToggle.Text = godmodeEnabled and "Toggle Godmode: ON" or "Toggle Godmode: OFF"
+        end)
+
+        -- UI Toggle Button para AutoFarm de Trinkets
+        local TrinketFarmToggle = Instance.new("TextButton")
+        TrinketFarmToggle.Name = "TrinketFarmToggle"
+        TrinketFarmToggle.Parent = SubMenuFrame
+        TrinketFarmToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        TrinketFarmToggle.Size = UDim2.new(1, -20, 0, 30)
+        TrinketFarmToggle.Font = Enum.Font.GothamBold
+        TrinketFarmToggle.Text = trinketFarmEnabled and "Trinket Farm: ON" or "Trinket Farm: OFF"
+        TrinketFarmToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        TrinketFarmToggle.TextSize = 16
+        TrinketFarmToggle.Position = UDim2.new(0, 10, 0, 10)
+
+        TrinketFarmToggle.MouseButton1Click:Connect(function()
+            toggleTrinketFarm(not trinketFarmEnabled)
+            TrinketFarmToggle.Text = trinketFarmEnabled and "Trinket Farm: ON" or "Trinket Farm: OFF"
+        end)
+
+        -- UI Toggle Button para AutoKill
+        local AutoKillToggle = Instance.new("TextButton")
+        AutoKillToggle.Name = "AutoKillToggle"
+        AutoKillToggle.Parent = SubMenuFrame
+        AutoKillToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        AutoKillToggle.Size = UDim2.new(1, -20, 0, 30)
+        AutoKillToggle.Font = Enum.Font.GothamBold
+        AutoKillToggle.Text = autoKillEnabled and "AutoKill: ON" or "AutoKill: OFF"
+        AutoKillToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        AutoKillToggle.TextSize = 16
+        AutoKillToggle.Position = UDim2.new(0, 10, 0, 50)
+        
+        AutoKillToggle.MouseButton1Click:Connect(function()
+            toggleAutoKill(not autoKillEnabled)
+            AutoKillToggle.Text = autoKillEnabled and "AutoKill: ON" or "AutoKill: OFF"
+        end)
+
+        -- Dropdown para seleccionar el tipo de NPC
+        local NPCSelectButton = Instance.new("TextButton")
+        NPCSelectButton.Name = "NPCSelectButton"
+        NPCSelectButton.Parent = SubMenuFrame
+        NPCSelectButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        NPCSelectButton.Size = UDim2.new(1, -20, 0, 30)
+        NPCSelectButton.Font = Enum.Font.GothamBold
+        NPCSelectButton.Text = "Select NPC Type"
+        NPCSelectButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+        NPCSelectButton.TextSize = 16
+        NPCSelectButton.Position = UDim2.new(0, 10, 0, 90)
+        
+        -- Opciones de NPCs (aquí se listan los NPCs)
+        local npcOptions = {"Generic Demon", "Frosty Demon", "Green Demon", "Blue Demon", "Generic Slayer", "Zenitsu", "Kaigaku", "Gyutaro"}
+        
+        NPCSelectButton.MouseButton1Click:Connect(function()
+            local DropdownMenu = Instance.new("Frame")
+            DropdownMenu.Name = "DropdownMenu"
+            DropdownMenu.Parent = NPCSelectButton
+            DropdownMenu.Size = UDim2.new(1, 0, #npcOptions, 0)
+            DropdownMenu.BackgroundColor3 = Color3.fromRGB(23, 21, 30)
+        
+            for i, option in ipairs(npcOptions) do
+                local OptionButton = Instance.new("TextButton")
+                OptionButton.Name = option
+                OptionButton.Parent = DropdownMenu
+                OptionButton.Size = UDim2.new(1, 0, 0, 30)
+                OptionButton.Font = Enum.Font.GothamBold
+                OptionButton.Text = option
+                OptionButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+                OptionButton.TextSize = 16
+        
+                OptionButton.MouseButton1Click:Connect(function()
+                    selectedNPCType = option
+                    NPCSelectButton.Text = "Selected: " .. option
+                    DropdownMenu:Destroy()
+                end)
+            end
+        end)
+
+        local AutoBreathingToggle = Instance.new("TextButton")
+        AutoBreathingToggle.Name = "AutoBreathingToggle"
+        AutoBreathingToggle.Parent = SubMenuFrame
+        AutoBreathingToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        AutoBreathingToggle.Size = UDim2.new(1, -20, 0, 30)
+        AutoBreathingToggle.Font = Enum.Font.GothamBold
+        AutoBreathingToggle.Text = autoBreathingEnabled and "Auto Breathing: ON" or "Auto Breathing: OFF"
+        AutoBreathingToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        AutoBreathingToggle.TextSize = 16
+        AutoBreathingToggle.Position = UDim2.new(0, 10, 0, 50)
+        
+        AutoBreathingToggle.MouseButton1Click:Connect(function()
+            toggleAutoBreathing(not autoBreathingEnabled)
+            AutoBreathingToggle.Text = autoBreathingEnabled and "Auto Breathing: ON" or "Auto Breathing: OFF"
+        end)
+    end
+end)
+
+-- Botón de teleport
+TeleportButton.Name = "TeleportButton"
+TeleportButton.Parent = MainFrame
+TeleportButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+TeleportButton.Size = UDim2.new(0, 180, 0, 30)
+TeleportButton.Position = UDim2.new(0, 210, 0, 60)
+TeleportButton.Font = Enum.Font.GothamBold
+TeleportButton.Text = "Teleport"
+TeleportButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+TeleportButton.TextSize = 16
+
+TeleportButton.MouseButton1Click:Connect(function()
+    toggleSubMenu(SubMenuFrame)
+    if SubMenuFrame.Visible then
+        SubMenuFrame:ClearAllChildren()
+
+        -- Lista de teleports
+        local TeleportListFrame = Instance.new("ScrollingFrame")
+        TeleportListFrame.Name = "TeleportListFrame"
+        TeleportListFrame.Parent = SubMenuFrame
+        TeleportListFrame.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        TeleportListFrame.Size = UDim2.new(1, -20, 1, -20)
+        TeleportListFrame.Position = UDim2.new(0, 10, 0, 10)
+        TeleportListFrame.CanvasSize = UDim2.new(0, 0, 2, 0)
+        TeleportListFrame.ScrollBarThickness = 6
+
+        local TeleportList = Instance.new("UIListLayout")
+        TeleportList.Parent = TeleportListFrame
+        TeleportList.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local function addTeleportButton(name, position)
+            local TeleportButton = Instance.new("TextButton")
+            TeleportButton.Name = name .. "TeleportButton"
+            TeleportButton.Parent = TeleportListFrame
+            TeleportButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+            TeleportButton.Size = UDim2.new(1, 0, 0, 30)
+            TeleportButton.Font = Enum.Font.GothamBold
+            TeleportButton.Text = "Teleport: " .. name
+            TeleportButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+            TeleportButton.TextSize = 16
+
+            TeleportButton.MouseButton1Click:Connect(function()
+                local player = game:GetService("Players").LocalPlayer
+                local character = player.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    character:SetPrimaryPartCFrame(CFrame.new(position))
+                end
+            end)
+        end
+
+        addTeleportButton("Slayer Exam", Vector3.new(-5201.61719, 815.619141, -3048.21924))
+        addTeleportButton("Charles (Demon)", Vector3.new(2455.26489, 1166.29126, -7362.75439))
+        addTeleportButton("Muzan (Demon)", Vector3.new(1992.57556, 1585.828, -7349.61914))
+    end
+end)
+
+-- Botón de Hashiras
+HashirasButton.Name = "HashirasButton"
+HashirasButton.Parent = MainFrame
+HashirasButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+HashirasButton.Size = UDim2.new(0, 180, 0, 30)
+HashirasButton.Position = UDim2.new(0, 10, 0, 100)
+HashirasButton.Font = Enum.Font.GothamBold
+HashirasButton.Text = "Hashiras"
+HashirasButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+HashirasButton.TextSize = 16
+
+HashirasButton.MouseButton1Click:Connect(function()
+    toggleSubMenu(SubMenuFrame)
+    if SubMenuFrame.Visible then
+        SubMenuFrame:ClearAllChildren()
+
+        -- Misiones de Respiración
+        local function addMissionButton(name, missionFunction, position)
+            local MissionButton = Instance.new("TextButton")
+            MissionButton.Name = name .. "MissionButton"
+            MissionButton.Parent = SubMenuFrame
+            MissionButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+            MissionButton.Size = UDim2.new(1, -20, 0, 30)
+            MissionButton.Font = Enum.Font.GothamBold
+            MissionButton.Text = name .. " Mission"
+            MissionButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+            MissionButton.TextSize = 16
+            MissionButton.Position = position
+
+            MissionButton.MouseButton1Click:Connect(missionFunction)
+        end
+
+        addMissionButton("Water Breathing", function()
+            game:GetService("ReplicatedStorage").Remotes.Async:FireServer("WaterFinal", "FinishTest")
+        end, UDim2.new(0, 10, 0, 10))
+
+        addMissionButton("Mist Breathing", function()
+            _G.toggle = true
+            while _G.toggle do
+                wait()
+                game:GetService("ReplicatedStorage").Remotes.Async:FireServer("MistFinal", "FinishTest")
+            end
+        end, UDim2.new(0, 10, 0, 50))
+
+        -- Crear lista desplazable para los trainers
+        local ScrollFrame = Instance.new("ScrollingFrame")
+        ScrollFrame.Name = "HashiraScrollFrame"
+        ScrollFrame.Parent = SubMenuFrame
+        ScrollFrame.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        ScrollFrame.Size = UDim2.new(1, -20, 0.7, 0)
+        ScrollFrame.Position = UDim2.new(0, 10, 0, 100)
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 2, 0)
+        ScrollFrame.ScrollBarThickness = 6
+
+        local HashiraList = Instance.new("UIListLayout")
+        HashiraList.Parent = ScrollFrame
+        HashiraList.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local function addHashiraButton(name, position)
+            local HashiraButton = Instance.new("TextButton")
+            HashiraButton.Name = name .. "HashiraButton"
+            HashiraButton.Parent = ScrollFrame
+            HashiraButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+            HashiraButton.Size = UDim2.new(1, 0, 0, 30)
+            HashiraButton.Font = Enum.Font.GothamBold
+            HashiraButton.Text = name .. " Trainer"
+            HashiraButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+            HashiraButton.TextSize = 16
+
+            HashiraButton.MouseButton1Click:Connect(function()
+                local player = game:GetService("Players").LocalPlayer
+                local character = player.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    character:SetPrimaryPartCFrame(CFrame.new(position))
+                end
+            end)
+        end
+
+        addHashiraButton("Water Breathing", Vector3.new(-925.451416, 845.348022, -988.633118))
+        addHashiraButton("Love Breathing", Vector3.new(1188.2959, 1077.53308, -1113.44568))
+        addHashiraButton("Mist Breathing", Vector3.new(3234.87256, 777.381409, -4047.58716))
+        addHashiraButton("Wind Breathing", Vector3.new(-3290.450439453125, 709.4359130859375, -1252.216552734375))
+        addHashiraButton("Sound Breathing", Vector3.new(-1676.84216, 1515.88205, -3328.44873))
+        addHashiraButton("Snake Breathing", Vector3.new(990.340454, 1070.27051, -1136.19946))
+    end
+end)
+
+-- Botón de Extras
+ExtraButton.Name = "ExtraButton"
+ExtraButton.Parent = MainFrame
+ExtraButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+ExtraButton.Size = UDim2.new(0, 180, 0, 30)
+ExtraButton.Position = UDim2.new(0, 210, 0, 100)
+ExtraButton.Font = Enum.Font.GothamBold
+ExtraButton.Text = "Extra"
+ExtraButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+ExtraButton.TextSize = 16
+
+ExtraButton.MouseButton1Click:Connect(function()
+    toggleSubMenu(SubMenuFrame)
+    if SubMenuFrame.Visible then
+        SubMenuFrame:ClearAllChildren()
+
+        -- Opciones extras
+        local AntiLagToggle = Instance.new("TextButton")
+        AntiLagToggle.Name = "AntiLagToggle"
+        AntiLagToggle.Parent = SubMenuFrame
+        AntiLagToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        AntiLagToggle.Size = UDim2.new(1, -20, 0, 30)
+        AntiLagToggle.Font = Enum.Font.GothamBold
+        AntiLagToggle.Text = antiLagEnabled and "Toggle Anti Lag: ON" or "Toggle Anti Lag: OFF"
+        AntiLagToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        AntiLagToggle.TextSize = 16
+        AntiLagToggle.Position = UDim2.new(0, 10, 0, 10)
+        
+        AntiLagToggle.MouseButton1Click:Connect(function()
+            toggleAntiLag(not antiLagEnabled)
+            AntiLagToggle.Text = antiLagEnabled and "Toggle Anti Lag: ON" or "Toggle Anti Lag: OFF"
+        end)
+
+        -- UI Button
+        local AntiSunToggle = Instance.new("TextButton")
+        AntiSunToggle.Name = "AntiSunToggle"
+        AntiSunToggle.Parent = SubMenuFrame
+        AntiSunToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        AntiSunToggle.Size = UDim2.new(1, -20, 0, 30)
+        AntiSunToggle.Font = Enum.Font.GothamBold
+        AntiSunToggle.Text = antiSunEnabled and "Toggle AntiSun: ON" or "Toggle AntiSun: OFF"
+        AntiSunToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        AntiSunToggle.TextSize = 16
+        AntiSunToggle.Position = UDim2.new(0, 10, 0, 170)
+
+        AntiSunToggle.MouseButton1Click:Connect(function()
+            toggleAntiSun(not antiSunEnabled)
+            AntiSunToggle.Text = antiSunEnabled and "Toggle AntiSun: ON" or "Toggle AntiSun: OFF"
+        end)
+
+        local NoCrowToggle = Instance.new("TextButton")
+        NoCrowToggle.Name = "NoCrowToggle"
+        NoCrowToggle.Parent = SubMenuFrame
+        NoCrowToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        NoCrowToggle.Size = UDim2.new(1, -20, 0, 30)
+        NoCrowToggle.Font = Enum.Font.GothamBold
+        NoCrowToggle.Text = noCrowEnabled and "Toggle No Crow: ON" or "Toggle No Crow: OFF"
+        NoCrowToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        NoCrowToggle.TextSize = 16
+        NoCrowToggle.Position = UDim2.new(0, 10, 0, 50)
+        
+        NoCrowToggle.MouseButton1Click:Connect(function()
+            toggleNoCrow(not noCrowEnabled)
+            NoCrowToggle.Text = noCrowEnabled and "Toggle No Crow: ON" or "Toggle No Crow: OFF"
+        end)
+
+        -- Get Drop
+        local GetDropToggle = Instance.new("TextButton")
+        GetDropToggle.Name = "GetDropToggle"
+        GetDropToggle.Parent = SubMenuFrame
+        GetDropToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        GetDropToggle.Size = UDim2.new(1, -20, 0, 30)
+        GetDropToggle.Font = Enum.Font.GothamBold
+        GetDropToggle.Text = getDropEnabled and "Get Drop: ON" or "Get Drop: OFF"
+        GetDropToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        GetDropToggle.TextSize = 16
+        GetDropToggle.Position = UDim2.new(0, 10, 0, 90)
+
+        GetDropToggle.MouseButton1Click:Connect(function()
+            toggleGetDrop(not getDropEnabled)
+            GetDropToggle.Text = getDropEnabled and "Get Drop: ON" or "Get Drop: OFF"
+        end)
+
+        -- Auto Gourd
+        local AutoGourdToggle = Instance.new("TextButton")
+        AutoGourdToggle.Name = "AutoGourdToggle"
+        AutoGourdToggle.Parent = SubMenuFrame
+        AutoGourdToggle.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+        AutoGourdToggle.Size = UDim2.new(1, -20, 0, 30)
+        AutoGourdToggle.Font = Enum.Font.GothamBold
+        AutoGourdToggle.Text = autoGourdEnabled and "Auto Gourd: ON" or "Auto Gourd: OFF"
+        AutoGourdToggle.TextColor3 = Color3.fromRGB(0, 170, 255)
+        AutoGourdToggle.TextSize = 16
+        AutoGourdToggle.Position = UDim2.new(0, 10, 0, 130)
+
+        AutoGourdToggle.MouseButton1Click:Connect(function()
+            toggleAutoGourd(not autoGourdEnabled)
+            AutoGourdToggle.Text = autoGourdEnabled and "Auto Gourd: ON" or "Auto Gourd: OFF"
+        end)
+    end
+end)
+
+-- Menú de duplicación (Dupe Menu)
+DupeButton.Name = "DupeButton"
+DupeButton.Parent = MainFrame
+DupeButton.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+DupeButton.Size = UDim2.new(0, 180, 0, 30)
+DupeButton.Position = UDim2.new(0, 110, 0, 140)
+DupeButton.Font = Enum.Font.GothamBold
+DupeButton.Text = "Dupe Menu"
+DupeButton.TextColor3 = Color3.fromRGB(0, 170, 255)
+DupeButton.TextSize = 16
+
+DupeButton.MouseButton1Click:Connect(function()
+    toggleSubMenu(DupeMenu)
+end)
+
+DupeMenu.Name = "DupeMenu"
+DupeMenu.Parent = MainFrame
+DupeMenu.BackgroundColor3 = Color3.fromRGB(43, 42, 49)
+DupeMenu.Position = UDim2.new(1, 10, 0, 0)
+DupeMenu.Size = UDim2.new(0, 200, 0, 150)
+DupeMenu.Visible = false
+
+local DupeItemInput = Instance.new("TextBox")
+DupeItemInput.Parent = DupeMenu
+DupeItemInput.Position = UDim2.new(0, 10, 0, 10)
+DupeItemInput.Size = UDim2.new(0, 180, 0, 30)
+DupeItemInput.PlaceholderText = "Nombre del Item"
+DupeItemInput.Text = ""
+
+local DupeQuantityInput = Instance.new("TextBox")
+DupeQuantityInput.Parent = DupeMenu
+DupeQuantityInput.Position = UDim2.new(0, 10, 0, 50)
+DupeQuantityInput.Size = UDim2.new(0, 180, 0, 30)
+DupeQuantityInput.PlaceholderText = "Cantidad (Máx 50)"
+DupeQuantityInput.Text = ""
+
+local DupeButtonConfirm = Instance.new("TextButton")
+DupeButtonConfirm.Parent = DupeMenu
+DupeButtonConfirm.Position = UDim2.new(0, 10, 0, 90)
+DupeButtonConfirm.Size = UDim2.new(0, 180, 0, 30)
+DupeButtonConfirm.Text = "Duplicar Item"
+DupeButtonConfirm.TextColor3 = Color3.fromRGB(255, 255, 255)
+DupeButtonConfirm.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+
+DupeButtonConfirm.MouseButton1Click:Connect(function()
+    local itemName = DupeItemInput.Text
+    local quantity = DupeQuantityInput.Text == "inf" and math.huge or tonumber(DupeQuantityInput.Text)
+    if itemName and quantity then
+        local args = {
+            [1] = "HUD",
+            [2] = "Inventory",
+            [3] = "Drop",
+            [4] = itemName,
+            [5] = -quantity
+        }
+        game:GetService("ReplicatedStorage").Remotes.Sync:InvokeServer(unpack(args))
+    end
+end)
+
+-- Botón de minimización
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Parent = MainFrame
+ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+ToggleButton.Size = UDim2.new(0, 20, 0, 20)
+ToggleButton.Position = UDim2.new(1, -30, 0, 15)
+ToggleButton.Text = "-"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 16
+
+ToggleButton.MouseButton1Click:Connect(function()
+    uiMinimized = not uiMinimized
+    if uiMinimized then
+        MainFrame.Size = UDim2.new(0, 400, 0, 50)
+        CombatButton.Visible = false
+        TeleportButton.Visible = false
+        HashirasButton.Visible = false
+        ExtraButton.Visible = false
+        DupeButton.Visible = false
+        SubMenuFrame.Visible = false
+        DupeMenu.Visible = false
+    else
+        MainFrame.Size = UDim2.new(0, 400, 0, 200)
+        CombatButton.Visible = true
+        TeleportButton.Visible = true
+        HashirasButton.Visible = true
+        ExtraButton.Visible = true
+        DupeButton.Visible = true
+    end
+end)
+
+-- Salto Infinito
+game:GetService("UserInputService").JumpRequest:Connect(function()
+    if game:GetService("Players").LocalPlayer.Character then
+        game:GetService("Players").LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+    end
+end)
+
+-- Función para ocultar o mostrar la UI con Shift derecho
+local function hideUI()
+    ScreenGui.Enabled = not ScreenGui.Enabled
+end
+
+game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.RightShift then
+        hideUI()
+    end
+end)
+
+-- Cargar configuraciones al inicio
+loadSettings()
+
+-- Verificar y activar funciones según el estado guardado
+if godmodeEnabled then
+    toggleGodmode(true)
+end
+
+if autoBreathingEnabled then
+    toggleAutoBreathing(true)
+end
+
+if antiLagEnabled then
+    toggleAntiLag(true)
+end
+
+if noCrowEnabled then
+    toggleNoCrow(true)
+end
+
+if getDropEnabled then
+    toggleGetDrop(true)
+end
+
+if autoGourdEnabled then
+    toggleAutoGourd(true)
+end
