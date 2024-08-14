@@ -1,0 +1,332 @@
+-- Servicios y variables iniciales
+local runService = game:GetService("RunService")
+local tweenService = game:GetService("TweenService")
+local userInputService = game:GetService("UserInputService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local localPlayer = game.Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+-- Estados iniciales de las funciones
+local godmodeEnabled = false
+local autoBreathingEnabled = false
+local autoGourdEnabled = false
+local antiLagEnabled = false
+local noCrowEnabled = false
+local antiSunEnabled = false
+local autoFarmEnabled = false
+local autoTrinketEnabled = false
+local noclipEnabled = false
+local autoPickupEnabled = false
+
+local selectedNPCFunc = nil
+local currentAutoFarmTarget = nil
+
+-- Función para movimiento suave usando TweenService
+local function TweenMovement(destination, speed)
+    local tweenInfo = TweenInfo.new((humanoidRootPart.Position - destination).Magnitude / speed, Enum.EasingStyle.Linear)
+    local tween = tweenService:Create(humanoidRootPart, tweenInfo, {CFrame = CFrame.new(destination)})
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+-- Función para activar/desactivar Godmode
+local function toggleGodmode(state)
+    godmodeEnabled = state
+    if godmodeEnabled then
+        replicatedStorage.Remotes.Async:FireServer("Character", "FallDamageServer", math.acos(50))
+    else
+        replicatedStorage.Remotes.Async:FireServer("Character", "FallDamageServer", 0)
+    end
+end
+
+-- Función para activar/desactivar Auto Breathing
+local function toggleAutoBreathing(state)
+    autoBreathingEnabled = state
+    if autoBreathingEnabled then
+        spawn(function()
+            while autoBreathingEnabled and wait() do
+                pcall(function()
+                    if localPlayer.Breathing.Value < 100 then
+                        game:GetService("VirtualInputManager"):SendKeyEvent(true, "G", true, game)
+                        wait(2)
+                        game:GetService("VirtualInputManager"):SendKeyEvent(true, "G", false, game)
+                        character.Humanoid.WalkSpeed = 16
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+-- Función para activar/desactivar Anti Lag
+local function toggleAntiLag(state)
+    antiLagEnabled = state
+    if antiLagEnabled then
+        for _, v in pairs(game.Workspace:GetDescendants()) do
+            if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
+                v.Material = Enum.Material.SmoothPlastic
+                if v:IsA("Texture") then
+                    v:Destroy()
+                end
+            end
+        end
+    end
+end
+
+-- Función para activar/desactivar No Crow
+local function toggleNoCrow(state)
+    noCrowEnabled = state
+    if noCrowEnabled then
+        local crow = character:FindFirstChild("Crow")
+        if crow then
+            crow:Destroy()
+        end
+    end
+end
+
+-- Función para activar/desactivar Auto Gourd
+local function toggleAutoGourd(state)
+    autoGourdEnabled = state
+    if autoGourdEnabled then
+        localPlayer.PlayerGui.Interface.HUD.Clay.Back.TextLabel:GetPropertyChangedSignal("Text"):Connect(function()
+            if autoGourdEnabled then
+                local text = tonumber(localPlayer.PlayerGui.Interface.HUD.Clay.Back.TextLabel.Text:match("%d+"))
+                if text < 50 then
+                    mouse1press()
+                elseif text > 70 then
+                    mouse1release()
+                end
+            end
+        end)
+    end
+end
+
+-- Función para obtener el NPC más cercano
+local function getNearestNPC(npcName)
+    local closestDistance = math.huge
+    local closestNPC = nil
+
+    for _, npc in pairs(game.Workspace:GetChildren()) do
+        if npc.Name == npcName and npc:FindFirstChild("HumanoidRootPart") then
+            local distance = (npc.HumanoidRootPart.Position - humanoidRootPart.Position).Magnitude
+            if distance < closestDistance then
+                closestDistance = distance
+                closestNPC = npc
+            end
+        end
+    end
+
+    return closestNPC
+end
+
+-- Funciones para obtener los diferentes NPCs
+local function getNearestDemon()
+    return getNearestNPC("GenericOni")
+end
+
+local function getNearestFrostyDemon()
+    return getNearestNPC("FrostyOni")
+end
+
+local function getNearestGreenDemon()
+    return getNearestNPC("GreenDemon")
+end
+
+local function getNearestBlueDemon()
+    return getNearestNPC("BlueDemon")
+end
+
+local function getNearestSlayer()
+    return getNearestNPC("GenericSlayer")
+end
+
+local function getNearestZenitsu()
+    return getNearestNPC("Zenitsu")
+end
+
+local function getNearestGyutaro()
+    return getNearestNPC("Gyutaro")
+end
+
+local function getNearestKaigaku()
+    return getNearestNPC("Kaigaku")
+end
+
+-- Función para AutoFarm de NPCs usando TweenService
+local function autoFarmNPCs(targetFunc)
+    while autoFarmEnabled do
+        wait(3)
+        local target = targetFunc()
+        if target and target:FindFirstChild("HumanoidRootPart") and target.Humanoid.Health > 0 then
+            -- Equipar Katana
+            replicatedStorage.Remotes.Async:FireServer("Katana", "Server")
+            replicatedStorage.Remotes.Async:FireServer("Katana", "EquippedEvents", true, true)
+
+            -- Teletransportarse al objetivo
+            humanoidRootPart.CFrame = CFrame.new(target.HumanoidRootPart.Position)
+
+            -- Seguir al objetivo usando TweenService
+            while target and target.Humanoid.Health > 0 and autoFarmEnabled do
+                TweenMovement(target.HumanoidRootPart.Position, 50)
+                wait(0.5) -- Espera un poco antes de seguir de nuevo
+
+                -- Ataque
+                replicatedStorage.Remotes.Sync:InvokeServer("Character", "Execute")
+                replicatedStorage.Remotes.Async:FireServer("Katana", "Server")
+            end
+        end
+    end
+end
+
+-- Función para Toggle AutoFarm
+local function toggleAutoFarm(state)
+    autoFarmEnabled = state
+    if autoFarmEnabled and selectedNPCFunc then
+        toggleNoclip(true)
+        autoFarmNPCs(selectedNPCFunc)
+    else
+        toggleNoclip(false)
+    end
+end
+
+-- Función para Farm Trinkets
+local function farmTrinkets()
+    while autoTrinketEnabled do
+        for _, v in pairs(game.Workspace:GetChildren()) do
+            if v:FindFirstChild("PickableItem") and v:FindFirstChild("Part") then
+                -- Movimientos fluidos hacia el trinket
+                TweenMovement(v.Part.Position, 50)
+
+                -- Interacción con el trinket
+                replicatedStorage.Remotes.Async:FireServer("Character", "Interaction", v.Part)
+                wait(0.5) -- Pequeña pausa entre interacciones
+            end
+        end
+    end
+end
+
+-- Función para Auto Pickup
+local function autoPickup()
+    while autoPickupEnabled do
+        farmTrinkets()
+        wait(0.1)
+    end
+end
+
+-- Función para activar/desactivar NoClip
+local function toggleNoclip(state)
+    noclipEnabled = state
+    if noclipEnabled then
+        _G.connection = runService.RenderStepped:Connect(function()
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:ChangeState(11) -- Estado de noclip
+            end
+            if not noclipEnabled then
+                _G.connection:Disconnect()
+                _G.connection = nil
+            end
+        end)
+    else
+        if _G.connection then
+            _G.connection:Disconnect()
+            _G.connection = nil
+        end
+    end
+end
+
+-- Función para AntiSun
+local function toggleAntiSun(state)
+    antiSunEnabled = state
+    if antiSunEnabled then
+        local OldNamecall
+        OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local args = {...}
+            if getnamecallmethod() == "FireServer" and args[2] == "DemonWeakness" then
+                return wait(math.huge)
+            end
+            return OldNamecall(self, ...)
+        end)
+    end
+end
+
+-- Función para Rejoin
+local function rejoinGame()
+    game:GetService("TeleportService"):Teleport(game.PlaceId, localPlayer)
+end
+
+-- Función para ServerHop
+local function serverHop()
+    local PlaceID = game.PlaceId
+    local AllIDs = {}
+    local foundAnything = ""
+    local actualHour = os.date("!*t").hour
+    local Deleted = false
+    local File = pcall(function()
+        AllIDs = game:GetService('HttpService'):JSONDecode(readfile("NotSameServers.json"))
+    end)
+    if not File then
+        table.insert(AllIDs, actualHour)
+        writefile("NotSameServers.json", game:GetService('HttpService'):JSONEncode(AllIDs))
+    end
+
+    local function TPReturner()
+        local Site
+        if foundAnything == "" then
+            Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100'))
+        else
+            Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
+        end
+        local ID = ""
+        if Site.nextPageCursor and Site.nextPageCursor ~= "null" and Site.nextPageCursor ~= nil then
+            foundAnything = Site.nextPageCursor
+        end
+        local num = 0
+        for _, v in pairs(Site.data) do
+            local Possible = true
+            ID = tostring(v.id)
+            if tonumber(v.maxPlayers) > tonumber(v.playing) then
+                for _, Existing in pairs(AllIDs) do
+                    if num ~= 0 then
+                        if ID == tostring(Existing) then
+                            Possible = false
+                        end
+                    else
+                        if tonumber(actualHour) ~= tonumber(Existing) then
+                            local delFile = pcall(function()
+                                delfile("NotSameServers.json")
+                                AllIDs = {}
+                                table.insert(AllIDs, actualHour)
+                            end)
+                        end
+                    end
+                    num = num + 1
+                end
+                if Possible == true then
+                    table.insert(AllIDs, ID)
+                    wait()
+                    pcall(function()
+                        writefile("NotSameServers.json", game:GetService('HttpService'):JSONEncode(AllIDs))
+                        wait()
+                        game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, ID, localPlayer)
+                    end)
+                    wait(4)
+                end
+            end
+        end
+    end
+
+    function Teleport()
+        while wait() do
+            pcall(function()
+                TPReturner()
+                if foundAnything ~= "" then
+                    TPReturner()
+                end
+            end)
+        end
+    end
+
+    Teleport()
+end
